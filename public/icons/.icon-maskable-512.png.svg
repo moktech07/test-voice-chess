@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+  <rect width="512" height="512" fill="#12100e"/>
+  <rect x="123.28959999999998" y="123.28959999999998" width="265.42080000000004" height="265.42080000000004" rx="42.46732800000001" fill="#e8b04b"/>
+  <text x="50%" y="50%" dy="0.35em" text-anchor="middle"
+        font-family="DejaVu Sans, Segoe UI Symbol, Noto Sans Symbols 2, serif"
+        font-size="174" fill="#12100e">&#9822;</text>
+</svg>

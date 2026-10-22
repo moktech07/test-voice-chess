@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no"
+    />
+    <meta name="theme-color" content="#12100e" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Voice Chess" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <link rel="manifest" href="./manifest.webmanifest" />
+    <link rel="apple-touch-icon" href="./icons/icon-192.png" />
+    <link rel="icon" type="image/png" href="./icons/icon-192.png" />
+    <title>Voice Chess</title>
+  </head>
+  <body>
+    <div id="app">
+      <main class="stage" id="stage">
+        <header class="stage__bar">
+          <div class="status" id="status">
+            <span class="dot" id="mic-dot"></span>
+            <span id="status-text">Starting up…</span>
+          </div>
+          <div class="turn" id="turn">—</div>
+        </header>
+
+        <!-- Board is a visual aid only. The game is fully playable with eyes closed. -->
+        <section class="board" id="board" aria-label="Chess board"></section>
+
+        <section class="transcript" aria-live="polite">
+          <div class="transcript__row transcript__row--heard">
+            <span class="transcript__label">You</span>
+            <span class="transcript__text" id="heard-text">—</span>
+          </div>
+          <div class="transcript__row transcript__row--said">
+            <span class="transcript__label">App</span>
+            <span class="transcript__text" id="said-text">—</span>
+          </div>
+        </section>
+
+        <p class="hint" id="hint">Put on headphones. Say a move like “knight takes f three”.</p>
+
+        <div class="controls">
+          <button class="btn btn--primary" id="btn-start">Start listening</button>
+          <button class="btn" id="btn-undo">Undo</button>
+          <button class="btn" id="btn-new">New game</button>
+          <button class="btn" id="btn-read">Read board</button>
+          <button class="btn" id="btn-help">Help</button>
+        </div>
+
+        <div class="level">
+          <span>Engine strength</span>
+          <input type="range" id="level" min="0" max="4" step="1" value="2" />
+          <span id="level-label">2</span>
+        </div>
+      </main>
+    </div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
