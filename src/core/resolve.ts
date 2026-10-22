@@ -8,7 +8,7 @@
  *   - when several legal moves fit, we ask the player which piece / which square.
  */
 
-import type { Chess, Move } from 'chess.js';
+import type { Chess, Move, Square } from 'chess.js';
 
 import type {
   CandidateMove,
@@ -55,9 +55,9 @@ export function squareName(square: string): string {
  * chess.js v1 flag letters:
  *   'n' normal, 'b' big pawn (double step), 'c' capture, 'e' en-passant capture,
  *   'p' promotion, 'k' king-side castle, 'q' queen-side castle.
- * Note 'b' is the double pawn push, NOT a capture — so we key on 'c'/'e'.
- * We also accept the older v0 spellings ('b' for capture) so the module keeps
- * working against either build.
+ *
+ * NOTE: 'b' is the double pawn push, NOT a capture — a capture is 'c' (or 'e'
+ * for en passant). Verified against chess.js 1.4.0.
  */
 function isCapture(flags: string): boolean {
   return flags.includes('c') || flags.includes('e');
@@ -127,7 +127,7 @@ function illegalReason(chess: Chess, intent: MoveIntent): string {
   // If the origin square holds an enemy piece, the player is speaking for the
   // wrong side.
   if (intent.from) {
-    const occupant = chess.get(intent.from);
+    const occupant = chess.get(intent.from as Square);
     if (occupant && occupant.color !== chess.turn()) {
       return 'it is not your turn';
     }
@@ -179,8 +179,9 @@ export function resolveMove(chess: Chess, intent: MoveIntent): ResolveResult {
   }
 
   // 4. Named origin square.
-  if (intent.from) {
-    pool = pool.filter((c) => c.move.from === squareName(intent.from));
+  const from = intent.from ? squareName(intent.from) : undefined;
+  if (from) {
+    pool = pool.filter((c) => c.move.from === from);
   }
 
   // 5. Promotion. Prefer the exact promotion piece when it is available
@@ -221,8 +222,9 @@ export function resolveDisambiguation(
   if (answer.piece) {
     pool = pool.filter((c) => c.piece === answer.piece);
   }
-  if (answer.square) {
-    pool = pool.filter((c) => c.from === squareName(answer.square));
+  const answerSquare = answer.square ? squareName(answer.square) : undefined;
+  if (answerSquare) {
+    pool = pool.filter((c) => c.from === answerSquare);
   }
 
   const rawText = answer.piece

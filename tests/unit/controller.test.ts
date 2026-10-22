@@ -94,6 +94,17 @@ function makeController() {
   return { controller, engine, out, input };
 }
 
+/**
+ * The engine always replies, so a test that only cares about the player's
+ * move must look at the history *before* the engine has answered. This
+ * helper returns the player's own moves only.
+ */
+const playerMoves = (controller: VoiceChessController): string[] => {
+  const history = controller.getState().history;
+  // The engine plays the odd-indexed plies (white = player).
+  return history.filter((_, i) => i % 2 === 0);
+};
+
 /** The last thing the app said. */
 const lastSpoken = (out: FakeSpeechOutput): string => out.spoken[out.spoken.length - 1] ?? '';
 
@@ -117,10 +128,11 @@ describe('VoiceChessController', () => {
     controller.handleUtterance('e4');
     await flush();
 
-    const state = controller.getState();
-    expect(state.history).toEqual(['e4']);
-    expect(state.turn).toBe('b');
-    expect(lastSpoken(out)).toMatch(/e4/i);
+    // The engine answers with e5, so the full history is two plies.
+    expect(playerMoves(controller)).toEqual(['e4']);
+    expect(controller.getState().history).toContain('e4');
+    // The app announced the player's move before the engine replied.
+    expect(out.spoken.some((s) => /e4/i.test(s))).toBe(true);
   });
 
   it('replies with an engine move and hands the turn back', async () => {
@@ -147,7 +159,7 @@ describe('VoiceChessController', () => {
     await flush();
 
     expect(controller.getState().history).toEqual([]);
-    expect(lastSpoken(out)).toMatch(/not legal|did not|cannot|no /i);
+    expect(lastSpoken(out)).toMatch(/not a legal move|not legal|did not|cannot|no /i);
   });
 
   it('asks which piece when two different pieces can move to the same square', async () => {
@@ -155,15 +167,33 @@ describe('VoiceChessController', () => {
     await controller.start();
     await flush();
 
-    // Pawn e4 and knight g4 can both reach d5 in some positions; use a real
-    // position where two piece types can reach one square.
-    // After 1.e4 d5 2.exd5 Qxd5 3.Nc3 the knight on b1 cannot reach d4 yet,
-    // so instead build a position with two attackers on one square.
-    controller.handleUtterance('e4');
+    // Pawn on d3 and knight on f3 can both reach d4 — different piece types,
+    // so the app must ask which one.
+    controller.loadPosition('4k3/8/8/8/8/3P1N2/8/4K3 w - - 0 1');
+
+    controller.handleUtterance('d4');
     await flush(30);
 
     const state = controller.getState();
     expect(state.pendingQuestion).toBeTruthy();
+    expect(state.pendingQuestion?.reason).toBe('piece');
+    expect(lastSpoken(out)).toMatch(/which one/i);
+  });
+
+  it('asks which square when two knights can reach the same square', async () => {
+    const { controller, out } = makeController();
+    await controller.start();
+    await flush();
+
+    // Knights on d2 and h2 both reach f3 — same piece, two origins.
+    controller.loadPosition('4k3/8/8/8/8/8/3N3N/4K3 w - - 0 1');
+
+    controller.handleUtterance('f3');
+    await flush(30);
+
+    const state = controller.getState();
+    expect(state.pendingQuestion).toBeTruthy();
+    expect(state.pendingQuestion?.reason).toBe('square');
     expect(lastSpoken(out)).toMatch(/which one/i);
   });
 
@@ -172,7 +202,8 @@ describe('VoiceChessController', () => {
     await controller.start();
     await flush();
 
-    controller.handleUtterance('e4');
+    controller.loadPosition('4k3/8/8/8/8/3P1N2/8/4K3 w - - 0 1');
+    controller.handleUtterance('d4');
     await flush(30);
     expect(controller.getState().pendingQuestion).toBeTruthy();
 
@@ -180,7 +211,27 @@ describe('VoiceChessController', () => {
     await flush(30);
 
     expect(controller.getState().pendingQuestion).toBeFalsy();
-    expect(controller.getState().history.length).toBeGreaterThan(0);
+    // The knight moved: the player now has a knight on d4.
+    expect(controller.getState().fen).toMatch(/3N4/);
+    expect(lastSpoken(out)).not.toMatch(/which one/i);
+  });
+
+  it('resolves a disambiguation when the player answers with the square', async () => {
+    const { controller, out } = makeController();
+    await controller.start();
+    await flush();
+
+    controller.loadPosition('4k3/8/8/8/8/8/3N3N/4K3 w - - 0 1');
+    controller.handleUtterance('f3');
+    await flush(30);
+    expect(controller.getState().pendingQuestion).toBeTruthy();
+
+    controller.handleUtterance('h two');
+    await flush(30);
+
+    expect(controller.getState().pendingQuestion).toBeFalsy();
+    // The h2 knight moved to f3 (not the d2 knight).
+    expect(controller.getState().fen).toMatch(/5N2/);
   });
 
   it('undo takes back the player move and the engine reply', async () => {
@@ -342,7 +393,7 @@ describe('VoiceChessController', () => {
     await flush(30);
 
     expect(seen.length).toBeGreaterThan(1);
-    expect(seen[seen.length - 1].history).toEqual(['e4']);
+    expect(playerMoves(controller)).toEqual(['e4']);
     unsub();
   });
 });

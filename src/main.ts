@@ -1,4 +1,5 @@
 import './style.css';
+import { Chess } from 'chess.js';
 import { VoiceChessController } from './core/controller.ts';
 import { createEngine } from './core/engine.ts';
 import { createSpeechInput, createSpeechOutput, speechSupportReport } from './core/speech.ts';
@@ -44,12 +45,25 @@ if (!support.input) {
 }
 
 let lastFen = '';
+let lastMove: { from: string; to: string } | null = null;
 
 controller.subscribe((state: GameViewState) => {
   // Board
   if (state.fen !== lastFen) {
     lastFen = state.fen;
-    renderBoard(els.board, state.fen, state.history);
+    // Highlight the squares involved in the most recent move.
+    const hist = state.history;
+    lastMove = null;
+    if (hist.length >= 2) {
+      const chess = new Chess(state.fen);
+      const verbose = chess.history({ verbose: true }) as unknown as {
+        from: string;
+        to: string;
+      }[];
+      const m = verbose[verbose.length - 1];
+      if (m) lastMove = { from: m.from, to: m.to };
+    }
+    renderBoard(els.board, state.fen, lastMove);
   }
 
   // Turn + status

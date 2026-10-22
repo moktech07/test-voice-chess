@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Engine test harness</title>
+  </head>
+  <body>
+    <!--
+      A minimal production build of the real engine module, used by
+      tests/e2e/engine.browser.test.ts. It exists so the browser test can
+      drive the ACTUAL `StockfishEngine` class (not a hand-written copy of
+      the UCI protocol) from a production bundle served out of a
+      subdirectory.
+    -->
+    <div id="status">loading…</div>
+    <script type="module" src="./main.ts"></script>
+  </body>
+</html>

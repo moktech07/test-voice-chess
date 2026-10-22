@@ -557,6 +557,28 @@ describe('WebSpeechInput', () => {
     input.resume();
     expect(states).toEqual([true, false, true]);
   });
+
+  it('does not throw when the recognition API is missing', () => {
+    uninstallWindow();
+    const input = new WebSpeechInput();
+    expect(() => input.start(() => {})).not.toThrow();
+    expect(() => input.pause()).not.toThrow();
+    expect(() => input.resume()).not.toThrow();
+    expect(() => input.stop()).not.toThrow();
+    expect(input.listening).toBe(false);
+  });
+
+  it('guards against InvalidStateError when start() is called twice', () => {
+    const input = new WebSpeechInput();
+    input.start(() => {});
+    const r = rec();
+    r.start = () => {
+      r.startCount += 1;
+      throw Object.assign(new Error('already started'), { name: 'InvalidStateError' });
+    };
+    expect(() => input.start(() => {})).not.toThrow();
+    expect(input.listening).toBe(true);
+  });
 });
 
 describe('createEchoGuard', () => {

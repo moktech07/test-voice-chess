@@ -118,7 +118,11 @@ export class VoiceChessController implements GameController {
     this.lastHeard = trimmed;
     this.state.lastHeard = trimmed;
 
-    const intent = parseUtterance(trimmed);
+    // While a disambiguation question is outstanding, a bare square is the
+    // player's answer ("the h two knight") rather than a new destination.
+    const intent = parseUtterance(trimmed, {
+      pendingDisambiguation: this.pending !== null,
+    });
     if (!intent) {
       this.say(`I did not understand "${trimmed}". Say help for commands.`);
       this.emit();
@@ -127,8 +131,12 @@ export class VoiceChessController implements GameController {
 
     if (intent.kind === 'move') {
       this.handleMoveIntent(intent);
-    } else if (intent.kind === 'disambiguate' && this.pending) {
-      this.handleDisambiguationAnswer(intent);
+    } else if (intent.kind === 'disambiguate') {
+      if (this.pending) {
+        this.handleDisambiguationAnswer(intent);
+      } else {
+        this.say('I did not catch which piece you meant. Say the square again.');
+      }
     } else {
       this.handleCommand(intent);
     }
@@ -149,6 +157,28 @@ export class VoiceChessController implements GameController {
     this.syncPosition();
     this.say('New game. You are white. Your move.');
     this.maybeEngineMove();
+  }
+
+  /**
+   * Load a specific position. Used to set up a game (and by tests to reach
+   * positions where a spoken move is ambiguous).
+   */
+  loadPosition(fen: string): void {
+    try {
+      this.chess = new Chess(fen);
+    } catch {
+      return;
+    }
+    this.pending = null;
+    this.pendingIntent = null;
+    this.thinking = false;
+    this.busy = false;
+    this.state.history = this.chess.history();
+    this.state.over = this.chess.isGameOver();
+    this.state.result = undefined;
+    this.state.thinking = false;
+    this.state.pendingQuestion = undefined;
+    this.syncPosition();
   }
 
   undo(): void {
@@ -199,12 +229,7 @@ export class VoiceChessController implements GameController {
 
     // If we are waiting for a disambiguation answer, treat this as the answer.
     if (this.pending) {
-      const answer = this.extractAnswer(intent);
-      if (answer) {
-        const result = resolveDisambiguation(this.chess, this.pending, answer);
-        this.applyResolution(result, intent);
-        return;
-      }
+      if (this.tryAnswerPending(intent)) return;
       // Not an answer — treat as a fresh move intent, which cancels the question.
       this.say('Never mind that question.');
       this.pending = null;
@@ -214,6 +239,46 @@ export class VoiceChessController implements GameController {
 
     const result = resolveMove(this.chess, intent);
     this.applyResolution(result, intent);
+  }
+
+  /**
+   * Try to read the current utterance as an answer to a pending
+   * "which piece / which square" question.
+   *
+   * The player may answer with:
+   *   - a piece name      ("knight")
+   *   - an origin square  ("h two", "from h two")
+   *   - a piece + square  ("the h two knight")
+   *
+   * Returns true when the utterance was consumed as an answer.
+   */
+  private tryAnswerPending(intent: MoveIntent): boolean {
+    const pending = this.pending;
+    if (!pending) return false;
+
+    const answer: { piece?: PieceType; square?: string } = {};
+    if (intent.piece) answer.piece = intent.piece;
+    if (intent.from) answer.square = intent.from;
+
+    // A bare square ("h two") means the ORIGIN square of the piece, but only
+    // when it is actually one of the candidate origins. Otherwise the player
+    // is naming a new destination and we should not hijack it.
+    if (!answer.square && intent.to) {
+      const isCandidateOrigin = pending.candidates.some((c) => c.from === intent.to);
+      if (isCandidateOrigin) answer.square = intent.to;
+    }
+
+    if (!answer.piece && !answer.square) return false;
+
+    const result = resolveDisambiguation(this.chess, pending, answer);
+    this.applyResolution(result, {
+      kind: 'move',
+      to: pending.candidates[0]?.to ?? '',
+      from: answer.square,
+      piece: answer.piece,
+      raw: intent.raw,
+    });
+    return true;
   }
 
   /**
@@ -239,15 +304,6 @@ export class VoiceChessController implements GameController {
       piece: answer.piece,
       raw: intent.raw,
     });
-  }
-
-  /** Pull a disambiguation answer out of an intent (piece and/or square). */
-  private extractAnswer(intent: MoveIntent): { piece?: PieceType; square?: string } | null {
-    const answer: { piece?: PieceType; square?: string } = {};
-    if (intent.piece) answer.piece = intent.piece;
-    if (intent.from) answer.square = intent.from;
-    if (!answer.piece && !answer.square) return null;
-    return answer;
   }
 
   private applyResolution(result: ResolveResult, intent: MoveIntent): void {
