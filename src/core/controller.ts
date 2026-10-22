@@ -345,7 +345,7 @@ export class VoiceChessController implements GameController {
 
     this.state.history = this.chess.history();
     this.syncPosition();
-    this.say(`${capitalize(applied.san)}. ${this.positionSummary()}`);
+    this.say(`${capitalize(applied.san)}. ${this.positionSummary()}.`);
     this.maybeEngineMove();
   }
 
@@ -414,6 +414,17 @@ export class VoiceChessController implements GameController {
         });
       } catch {
         applied = null;
+      }
+      if (!applied) {
+        /*
+         * The engine returned a move that is not legal in this position.
+         * Rather than dead-ending the game, play any legal move — the
+         * position is still playable and the player can continue.
+         */
+        const legal = this.chess.moves();
+        if (legal.length) {
+          applied = this.chess.move(legal[0]);
+        }
       }
       if (!applied) {
         this.say('The engine could not make a move. Say new game to restart.');
@@ -544,11 +555,10 @@ export class VoiceChessController implements GameController {
       }
       parts.push(collapsed.join(', '));
     }
-    // Row 1 first for a player at the bottom (index 7 of the array).
-    const ordered = parts.slice().reverse();
-    return `Rank eight: ${ordered[0]}. Rank seven: ${ordered[1]}. Rank six: ${ordered[2]}. ` +
-      `Rank five: ${ordered[3]}. Rank four: ${ordered[4]}. Rank three: ${ordered[5]}. ` +
-      `Rank two: ${ordered[6]}. Rank one: ${ordered[7]}.`;
+    // `board()` returns row 0 = rank 8, so parts[0] is rank 8 already.
+    return `Rank eight: ${parts[0]}. Rank seven: ${parts[1]}. Rank six: ${parts[2]}. ` +
+      `Rank five: ${parts[3]}. Rank four: ${parts[4]}. Rank three: ${parts[5]}. ` +
+      `Rank two: ${parts[6]}. Rank one: ${parts[7]}.`;
   }
 
   private whereDescription(piece?: PieceType): string {
@@ -573,17 +583,17 @@ export class VoiceChessController implements GameController {
     return `${turn} to move. Move number ${moveNo}. Difficulty ${this.difficulty}.`;
   }
 
-  /** A one-line summary of the position for after each move. */
+  /** A one-line summary of the position for after each move. No trailing period. */
   private positionSummary(): string {
-    if (this.chess.isCheckmate()) return 'Checkmate.';
-    if (this.chess.isStalemate()) return 'Stalemate, it is a draw.';
-    if (this.chess.isInsufficientMaterial()) return 'Draw by insufficient material.';
-    if (this.chess.isThreefoldRepetition()) return 'Draw by repetition.';
-    if (this.chess.isDrawByFiftyMoves()) return 'Draw by the fifty move rule.';
+    if (this.chess.isCheckmate()) return 'Checkmate';
+    if (this.chess.isStalemate()) return 'Stalemate, it is a draw';
+    if (this.chess.isInsufficientMaterial()) return 'Draw by insufficient material';
+    if (this.chess.isThreefoldRepetition()) return 'Draw by repetition';
+    if (this.chess.isDrawByFiftyMoves()) return 'Draw by the fifty move rule';
     if (this.chess.isCheck()) {
-      return `You are ${this.chess.turn() === this.playerColor ? 'in check' : 'giving check'}.`;
+      return `You are ${this.chess.turn() === this.playerColor ? 'in check' : 'giving check'}`;
     }
-    return this.chess.turn() === this.playerColor ? 'Your move.' : 'Engine thinking.';
+    return this.chess.turn() === this.playerColor ? 'Your move' : 'Engine thinking';
   }
 
   private afterMove(): void {

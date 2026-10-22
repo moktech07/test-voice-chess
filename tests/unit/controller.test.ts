@@ -280,6 +280,52 @@ describe('VoiceChessController', () => {
     expect(lastSpoken(out)).toMatch(/rook|knight|bishop|queen|king|pawn/i);
   });
 
+  it('reads the board with rank eight first and the black back rank on top', async () => {
+    const { controller, out } = makeController();
+    await controller.start();
+    await flush();
+
+    controller.handleUtterance('read the board');
+    await flush();
+
+    const text = lastSpoken(out);
+    // The black back rank is on rank 8, the white back rank on rank 1.
+    expect(text).toMatch(/rank eight: black rook/i);
+    expect(text).toMatch(/rank one: white rook/i);
+    // Rank eight must be described before rank one.
+    expect(text.toLowerCase().indexOf('rank eight')).toBeLessThan(
+      text.toLowerCase().indexOf('rank one'),
+    );
+  });
+
+  it('does not say a double period after a move', async () => {
+    const { controller, out } = makeController();
+    await controller.start();
+    await flush();
+
+    controller.handleUtterance('e4');
+    await flush(30);
+
+    for (const s of out.spoken) {
+      expect(s).not.toMatch(/\.\./);
+    }
+  });
+
+  it('falls back to a legal move when the engine returns an illegal one', async () => {
+    const { controller, engine, out } = makeController();
+    // An illegal move for the position (black cannot play e7-e5 here).
+    engine.replies = [{ from: 'a1', to: 'a8' }];
+    await controller.start();
+    await flush();
+
+    controller.handleUtterance('e4');
+    await flush(40);
+
+    // The game must continue rather than dead-ending.
+    expect(out.spoken.join(' ')).not.toMatch(/could not make a move/i);
+    expect(controller.getState().history.length).toBeGreaterThan(1);
+  });
+
   it('answers "where is the queen"', async () => {
     const { controller, out } = makeController();
     await controller.start();

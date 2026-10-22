@@ -277,4 +277,167 @@ test.describe('stockfish engine in the browser', () => {
     expect(message).toBeTruthy();
     expect(message).toMatch(/engine/i);
   });
+
+  test('stop() interrupts a running search and resolves it', async ({ page }) => {
+    await page.goto(BASE);
+    await page.waitForFunction(
+      () => Boolean((window as never as { __engineHarness?: unknown }).__engineHarness),
+    );
+
+    const result = await page.evaluate(async (fen: string) => {
+      const harness = (
+        window as never as {
+          __engineHarness: {
+            StockfishEngine: new (o?: unknown) => {
+              init(): Promise<void>;
+              search(f: string, o?: { depth?: number }): Promise<{ from: string; to: string }>;
+              stop(): void;
+              dispose(): void;
+            };
+          };
+        }
+      ).__engineHarness;
+
+      const engine = new harness.StockfishEngine();
+      await engine.init();
+
+      /* A very deep search that cannot possibly finish in time. */
+      const t0 = Date.now();
+      const pending = engine.search(fen, { depth: 60 });
+      setTimeout(() => engine.stop(), 200);
+
+      const move = await pending;
+      const elapsed = Date.now() - t0;
+
+      engine.dispose();
+      return { move, elapsed };
+    }, START_FEN);
+
+    expect(result.move).toBeTruthy();
+    expect(result.move.from).toMatch(/^[a-h][1-8]$/);
+    /* The search must have been cut short, not run to depth 60. */
+    expect(result.elapsed).toBeLessThan(30_000);
+  });
+
+  test('a second search stops the first one', async ({ page }) => {
+    await page.goto(BASE);
+    await page.waitForFunction(
+      () => Boolean((window as never as { __engineHarness?: unknown }).__engineHarness),
+    );
+
+    const result = await page.evaluate(async (fen: string) => {
+      const harness = (
+        window as never as {
+          __engineHarness: {
+            StockfishEngine: new (o?: unknown) => {
+              init(): Promise<void>;
+              search(f: string, o?: { depth?: number }): Promise<{ from: string; to: string }>;
+              dispose(): void;
+            };
+          };
+        }
+      ).__engineHarness;
+
+      const engine = new harness.StockfishEngine();
+      await engine.init();
+
+      const first = engine.search(fen, { depth: 60 });
+      /* Starting a second search must stop the first rather than corrupt it. */
+      const second = engine.search(fen, { depth: 8 });
+
+      const firstMove = await first;
+      const secondMove = await second;
+
+      engine.dispose();
+      return { firstMove, secondMove };
+    }, START_FEN);
+
+    expect(result.firstMove).toBeTruthy();
+    expect(result.firstMove.from).toMatch(/^[a-h][1-8]$/);
+    expect(result.secondMove).toBeTruthy();
+    expect(result.secondMove.from).toMatch(/^[a-h][1-8]$/);
+  });
+
+  test('onInfo reports the search score', async ({ page }) => {
+    await page.goto(BASE);
+    await page.waitForFunction(
+      () => Boolean((window as never as { __engineHarness?: unknown }).__engineHarness),
+    );
+
+    const result = await page.evaluate(async (fen: string) => {
+      const harness = (
+        window as never as {
+          __engineHarness: {
+            StockfishEngine: new (o?: unknown) => {
+              init(): Promise<void>;
+              search(f: string): Promise<unknown>;
+              onInfo?: (i: { depth?: number; scoreCp?: number }) => void;
+              dispose(): void;
+            };
+          };
+        }
+      ).__engineHarness;
+
+      const engine = new harness.StockfishEngine();
+      await engine.init();
+
+      const infos: { depth?: number; scoreCp?: number }[] = [];
+      engine.onInfo = (i) => infos.push(i);
+
+      await engine.search(fen);
+
+      engine.dispose();
+      return infos;
+    }, START_FEN);
+
+    expect(result.length).toBeGreaterThan(0);
+    expect(result.some((i) => typeof i.depth === 'number')).toBe(true);
+    expect(result.some((i) => typeof i.scoreCp === 'number')).toBe(true);
+  });
+
+  test('the difficulty level changes the search depth', async ({ page }) => {
+    await page.goto(BASE);
+    await page.waitForFunction(
+      () => Boolean((window as never as { __engineHarness?: unknown }).__engineHarness),
+    );
+
+    const depths = await page.evaluate(async (fen: string) => {
+      const harness = (
+        window as never as {
+          __engineHarness: {
+            StockfishEngine: new (o?: unknown) => {
+              init(): Promise<void>;
+              search(f: string): Promise<unknown>;
+              setDifficulty(l: number): void;
+              dispose(): void;
+            };
+          };
+        }
+      ).__engineHarness;
+
+      const engine = new harness.StockfishEngine();
+      await engine.init();
+
+      const seen: number[] = [];
+      /* Level 0 -> depth 2, level 4 -> depth 16. The engine must not go
+         deeper than the level allows. */
+      for (const level of [0, 4]) {
+        engine.setDifficulty(level);
+        const infos: { depth?: number }[] = [];
+        engine.onInfo = (i) => infos.push(i);
+        await engine.search(fen);
+        const max = Math.max(...infos.map((i) => i.depth ?? 0));
+        seen.push(max);
+      }
+
+      engine.dispose();
+      return seen;
+    }, START_FEN);
+
+    /* Level 0 searches shallow, level 4 searches deeper. */
+    expect(depths[0]).toBeGreaterThan(0);
+    expect(depths[0]).toBeLessThanOrEqual(2);
+    expect(depths[1]).toBeGreaterThan(depths[0]);
+    expect(depths[1]).toBeLessThanOrEqual(16);
+  });
 });
