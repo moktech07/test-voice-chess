@@ -213,7 +213,8 @@ describe('resolveMove — capture and promotion flags', () => {
     expect(result.status).toBe('ok');
     if (result.status !== 'ok') return;
     expect(result.move.promotion).toBe(true);
-    expect(result.move.san).toBe('a8=Q');
+    // The black king sits on e8 in this FEN, so promoting to a queen gives check.
+    expect(result.move.san).toBe('a8=Q+');
   });
 });
 
@@ -238,7 +239,9 @@ describe('resolveMove — illegal', () => {
   });
 
   it('reports that it is not your turn when the origin square holds an enemy piece', () => {
-    const chess = new Chess('rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR b KQkq - 0 1');
+    // White to move; e7 holds a BLACK pawn, so the player is speaking for
+    // the wrong side.
+    const chess = new Chess();
     const result = resolveMove(chess, intent({ to: 'e5', from: 'e7', piece: 'p' }));
     expect(result.status).toBe('illegal');
     if (result.status !== 'illegal') return;
@@ -284,7 +287,8 @@ describe('resolveDisambiguation', () => {
   });
 
   it('stays ambiguous with reason "square" when several origins remain', () => {
-    const chess = new Chess('4k3/8/8/8/8/8/3N3N/3N3K w - - 0 1');
+    // Three white knights (d2, d4, h2) all reach f3.
+    const chess = new Chess('4k3/8/8/8/3N4/8/3N3N/6K1 w - - 0 1');
     const pending = resolveMove(chess, intent({ to: 'f3', piece: 'n' }));
     expect(pending.status).toBe('ambiguous');
     if (pending.status !== 'ambiguous') return;

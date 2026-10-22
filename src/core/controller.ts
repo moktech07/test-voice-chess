@@ -14,6 +14,7 @@ import type {
 } from './types.ts';
 import { parseUtterance } from './parse.ts';
 import { resolveDisambiguation, resolveMove } from './resolve.ts';
+import { createEchoGuard, type EchoGuard } from './speech.ts';
 
 export interface ControllerDeps {
   engine: Engine;
@@ -32,6 +33,7 @@ export class VoiceChessController implements GameController {
   private engine: Engine;
   private speechOut: SpeechOutput;
   private speechIn: SpeechInput;
+  private echoGuard: EchoGuard;
 
   private playerColor: Color;
   private difficulty: number;
@@ -64,6 +66,7 @@ export class VoiceChessController implements GameController {
     this.engine = deps.engine;
     this.speechOut = deps.speechOut;
     this.speechIn = deps.speechIn;
+    this.echoGuard = createEchoGuard(this.speechIn, this.speechOut);
     this.playerColor = deps.playerColor ?? 'w';
     this.difficulty = deps.difficulty ?? 2;
 
@@ -271,7 +274,9 @@ export class VoiceChessController implements GameController {
       applied = this.chess.move({
         from: move.from,
         to: move.to,
-        promotion: move.promotion ? 'q' : undefined,
+        // chess.js requires a promotion piece when the move promotes; the
+        // player's spoken choice wins, defaulting to a queen.
+        promotion: move.promotion ? (intent.promotion ?? 'q') : undefined,
       });
     } catch {
       this.say('That move is not legal here. Try again.');
@@ -564,12 +569,12 @@ export class VoiceChessController implements GameController {
     this.state.lastSpoken = text;
     this.speechChain = this.speechChain
       .then(async () => {
-        // Pause the mic while talking so the app does not hear itself.
-        this.speechIn.pause();
-        try {
+        // The echo guard mutes the mic for exactly as long as the app is
+        // talking, so the app can never hear its own voice-over.
+        if (this.asleep) {
           await this.speechOut.speak(text, { interrupt: true });
-        } finally {
-          if (!this.asleep) this.speechIn.resume();
+        } else {
+          await this.echoGuard.speak(text, { interrupt: true });
         }
       })
       .catch(() => {

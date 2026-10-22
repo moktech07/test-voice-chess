@@ -561,12 +561,10 @@ export class WebSpeechInput implements SpeechInput {
   /** Un-mute the mic and restart recognition. Safe to call repeatedly. */
   resume(): void {
     if (!this.desired) return; // never started, or stopped for good
-    if (!this.paused) {
-      this.startEngine();
-      return;
-    }
+    if (!this.paused) return; // already live: nothing to do
     this.paused = false;
     this.dropResults = false;
+    this.backoff = INITIAL_BACKOFF_MS;
     this.startEngine();
   }
 
@@ -622,7 +620,6 @@ export class WebSpeechInput implements SpeechInput {
     try {
       rec.start();
       this.running = true;
-      this.backoff = INITIAL_BACKOFF_MS;
       this.setState(true);
     } catch (err) {
       if (isInvalidStateError(err)) {
@@ -653,6 +650,8 @@ export class WebSpeechInput implements SpeechInput {
       const transcript = (alternative?.transcript ?? '').trim();
       if (!transcript) continue;
       const isFinal = result.isFinal === true;
+      // A successful recognition means the engine is healthy again.
+      this.backoff = INITIAL_BACKOFF_MS;
       try {
         this.onHeard?.(transcript, isFinal);
       } catch {

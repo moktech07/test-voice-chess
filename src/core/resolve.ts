@@ -52,12 +52,15 @@ export function squareName(square: string): string {
 /* ------------------------------------------------------------------ */
 
 /**
- * chess.js v1 encodes a capture with flag 'c' and an en-passant capture with
- * 'e'; older v0 builds used 'b'. Promotion is 'p' in v1 ('q' in some v0
- * builds). We accept both spellings so the module keeps working either way.
+ * chess.js v1 flag letters:
+ *   'n' normal, 'b' big pawn (double step), 'c' capture, 'e' en-passant capture,
+ *   'p' promotion, 'k' king-side castle, 'q' queen-side castle.
+ * Note 'b' is the double pawn push, NOT a capture — so we key on 'c'/'e'.
+ * We also accept the older v0 spellings ('b' for capture) so the module keeps
+ * working against either build.
  */
 function isCapture(flags: string): boolean {
-  return flags.includes('c') || flags.includes('b') || flags.includes('e');
+  return flags.includes('c') || flags.includes('e');
 }
 
 function isPromotion(flags: string, san: string): boolean {
@@ -222,10 +225,16 @@ export function resolveDisambiguation(
     pool = pool.filter((c) => c.from === squareName(answer.square));
   }
 
+  const rawText = answer.piece
+    ? describePiece(answer.piece)
+    : answer.square
+      ? squareName(answer.square)
+      : '';
+
   const bestEffortIntent: MoveIntent = {
     kind: 'move',
     to: all.length > 0 ? all[0].to : '',
-    raw: answer.square ? squareName(answer.square) : answer.piece ?? '',
+    raw: rawText,
   };
 
   if (pool.length === 0) {
@@ -246,7 +255,12 @@ export function resolveDisambiguation(
     return { status: 'ok', move: pool[0] };
   }
 
-  // Still ambiguous. When the player already named the piece, the only
-  // remaining question is which square it starts from.
-  return { status: 'ambiguous', reason: ambiguousReason(pool), candidates: pool };
+  // Still ambiguous.
+  //  - The player named a piece -> the only open question is which square.
+  //  - The player named a square -> also keep asking about the square.
+  //  - No answer at all -> fall back to comparing the piece types.
+  const reason: 'piece' | 'square' =
+    answer.piece || answer.square ? 'square' : ambiguousReason(pool);
+
+  return { status: 'ambiguous', reason, candidates: pool };
 }
