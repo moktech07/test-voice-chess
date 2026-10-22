@@ -124,6 +124,8 @@ export class VoiceChessController implements GameController {
 
     if (intent.kind === 'move') {
       this.handleMoveIntent(intent);
+    } else if (intent.kind === 'disambiguate' && this.pending) {
+      this.handleDisambiguationAnswer(intent);
     } else {
       this.handleCommand(intent);
     }
@@ -151,8 +153,11 @@ export class VoiceChessController implements GameController {
       this.say('There are no moves to take back.');
       return;
     }
-    // Undo the engine's reply too if it already played, so it is the player's turn.
-    if (!this.chess.turn() === this.playerColor && this.chess.history().length >= 2) {
+    // If the engine has already replied, take back both plies so it is the
+    // player's turn again and they can choose a different move.
+    const engineAlreadyReplied =
+      this.chess.turn() === this.playerColor && this.chess.history().length >= 2;
+    if (engineAlreadyReplied) {
       this.chess.undo();
     }
     this.chess.undo();
@@ -167,6 +172,8 @@ export class VoiceChessController implements GameController {
     this.state.pendingQuestion = undefined;
     this.syncPosition();
     this.say(`Took back. The board is back to ${this.positionSummary()}.`);
+    // If the engine still has the move, let it play again.
+    this.maybeEngineMove();
   }
 
   /* ---------------------------------------------------------------- */
@@ -204,6 +211,31 @@ export class VoiceChessController implements GameController {
 
     const result = resolveMove(this.chess, intent);
     this.applyResolution(result, intent);
+  }
+
+  /**
+   * The player answered a "which piece / which square" question.
+   * `disambiguate` intents carry either a piece type or a square.
+   */
+  private handleDisambiguationAnswer(intent: CommandIntent): void {
+    if (!this.pending) return;
+    const answer: { piece?: PieceType; square?: string } = {};
+    if (intent.piece) answer.piece = intent.piece;
+    if (intent.square) answer.square = intent.square;
+
+    if (!answer.piece && !answer.square) {
+      this.say('I did not catch which piece you meant. Say the piece name or the square.');
+      return;
+    }
+
+    const result = resolveDisambiguation(this.chess, this.pending, answer);
+    this.applyResolution(result, {
+      kind: 'move',
+      to: this.pending.candidates[0]?.to ?? '',
+      from: answer.square,
+      piece: answer.piece,
+      raw: intent.raw,
+    });
   }
 
   /** Pull a disambiguation answer out of an intent (piece and/or square). */
